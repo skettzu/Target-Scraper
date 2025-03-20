@@ -1,6 +1,9 @@
 import requests
 import json
 import time
+import tkinter as tk
+from tkinter import messagebox
+import threading
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -9,7 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium_stealth import stealth
 import os
 from datetime import datetime
-# To Do: Fix tcin [done], confirm stock checking[done], and purchasing
+# To Do: Fix tcin [done], confirm stock checking[done], and purchasing [figure out maximum quantity (3)]
 
 global all_url
 class TargetPokemonBot:
@@ -90,6 +93,7 @@ class TargetPokemonBot:
                     is_available = True
                     # set product url for purchasing
                     self.product_url = all_url[x]
+                    threading.Thread(target=self.show_in_stock_notification, args=(all_url[x])).start()
                     return is_available, 1
                 
                 # Determine if product is sold out
@@ -113,6 +117,39 @@ class TargetPokemonBot:
             print(f"Response: {data}")
             return False, 0
     
+    def show_in_stock_notification(self, product_url):
+        """Show a popup notification when product is in stock"""
+        # Create a root window but keep it hidden
+        root = tk.Tk()
+        root.withdraw()
+        
+        # Play a sound to alert the user (optional)
+        try:
+            import winsound
+            winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+        except:
+            pass  # Sound will not play on non-Windows platforms
+        
+        # Create a custom dialog with buttons
+        messagebox.showinfo(
+            "Product In Stock Alert!",
+            f"Product is now in stock at:\n\n{product_url}"
+        )
+        
+        # Destroy the hidden root window
+        root.destroy()
+
+    # Add this method to your class to check if notification is already showing
+    def is_notification_showing(self):
+        """Check if a notification is already showing to prevent duplicates"""
+        if not hasattr(self, '_notification_showing'):
+            self._notification_showing = False
+        return self._notification_showing
+
+    def set_notification_status(self, status):
+        """Set the notification status"""
+        self._notification_showing = status
+
     def login_to_target(self):
         """Log in to Target.com"""
         try:
@@ -158,53 +195,124 @@ class TargetPokemonBot:
         try:
             # Navigate to product page
             self.driver.get(self.product_url)
+            print("Navigating to product page...")
             
-            # Wait for product page to load
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "[data-test='shipItButton']"))
-            )
+            # Wait for product page to load with increased timeout
+            ship_button_locator = (By.CSS_SELECTOR, "[data-test='shipItButton']")
+            try:
+                WebDriverWait(self.driver, 15).until(
+                    EC.element_to_be_clickable(ship_button_locator)
+                )
+            except:
+                print("Ship button not found or not clickable, taking screenshot...")
+                self.driver.save_screenshot("product_page_error.png")
+                # Try refreshing the page once
+                self.driver.refresh()
+                WebDriverWait(self.driver, 15).until(
+                    EC.element_to_be_clickable(ship_button_locator)
+                )
             
             # Set quantity if more than 1
             if quantity > 1:
-                # Find and click quantity dropdown
-                quantity_dropdown = self.driver.find_element(By.CSS_SELECTOR, "[data-test='quantityPicker']")
-                quantity_dropdown.click()
-                
-                # Select desired quantity
-                quantity_option = self.driver.find_element(By.CSS_SELECTOR, f"[data-value='{quantity}']")
-                quantity_option.click()
+                try:
+                    # Find and click quantity dropdown
+                    quantity_dropdown = WebDriverWait(self.driver, 10).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-test='quantityPicker']"))
+                    )
+                    # Try regular click first
+                    quantity_dropdown.click()
+                    
+                    # Wait for dropdown options to appear
+                    WebDriverWait(self.driver, 5).until(
+                        EC.visibility_of_element_located((By.CSS_SELECTOR, f"[data-value='{quantity}']"))
+                    )
+                    
+                    # Select desired quantity
+                    quantity_option = self.driver.find_element(By.CSS_SELECTOR, f"[data-value='{quantity}']")
+                    quantity_option.click()
+                    print(f"Selected quantity: {quantity}")
+                except Exception as e:
+                    print(f"Failed to set quantity: {e}. Proceeding with default quantity.")
+                    self.driver.save_screenshot("quantity_error.png")
             
-            # Click "Ship it" button
-            ship_button = self.driver.find_element(By.CSS_SELECTOR, "[data-test='shipItButton']")
-            ship_button.click()
+            # Click "Ship it" button with multiple attempts
+            for attempt in range(3):
+                try:
+                    print("Attempting to click 'Ship it' button...")
+                    ship_button = WebDriverWait(self.driver, 10).until(
+                        EC.element_to_be_clickable(ship_button_locator)
+                    )
+                    
+                    # Try regular click first
+                    ship_button.click()
+                    break
+                except:
+                    # If regular click fails, try JavaScript click
+                    if attempt == 1:
+                        print("Regular click failed, trying JavaScript click...")
+                        ship_button = self.driver.find_element(*ship_button_locator)
+                        self.driver.execute_script("arguments[0].click();", ship_button)
+                        break
+                    elif attempt == 2:
+                        print("JavaScript click failed, taking screenshot...")
+                        self.driver.save_screenshot("ship_button_error.png")
+                        raise
+                    time.sleep(1)  # Short pause between attempts
             
             # Wait for cart page and click checkout
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "[data-test='checkout-button']"))
+            checkout_button_locator = (By.CSS_SELECTOR, "[data-test='checkout-button']")
+            print("Waiting for cart page to load...")
+            WebDriverWait(self.driver, 15).until(
+                EC.element_to_be_clickable(checkout_button_locator)
             )
-            checkout_button = self.driver.find_element(By.CSS_SELECTOR, "[data-test='checkout-button']")
-            checkout_button.click()
+            
+            # Try to click checkout button with fallback to JavaScript
+            try:
+                checkout_button = self.driver.find_element(*checkout_button_locator)
+                checkout_button.click()
+            except:
+                print("Regular checkout click failed, trying JavaScript click...")
+                checkout_button = self.driver.find_element(*checkout_button_locator)
+                self.driver.execute_script("arguments[0].click();", checkout_button)
             
             # Wait for checkout page to load
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "[data-test='placeOrderButton']"))
+            place_order_locator = (By.CSS_SELECTOR, "[data-test='placeOrderButton']")
+            print("Waiting for checkout page to load...")
+            WebDriverWait(self.driver, 20).until(
+                EC.element_to_be_clickable(place_order_locator)
             )
             
-            # Place order
-            place_order_button = self.driver.find_element(By.CSS_SELECTOR, "[data-test='placeOrderButton']")
-            place_order_button.click()
+            # Place order with fallback
+            try:
+                place_order_button = self.driver.find_element(*place_order_locator)
+                print("Placing order...")
+                place_order_button.click()
+            except:
+                print("Regular place order click failed, trying JavaScript click...")
+                place_order_button = self.driver.find_element(*place_order_locator)
+                self.driver.execute_script("arguments[0].click();", place_order_button)
             
-            # Wait for order confirmation
-            WebDriverWait(self.driver, 15).until(
+            # Wait for order confirmation with longer timeout
+            print("Waiting for order confirmation...")
+            WebDriverWait(self.driver, 30).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, ".ThankYouPage"))
             )
             
             print("Order successfully placed!")
+            # Save confirmation screenshot
+            self.driver.save_screenshot("order_confirmation.png")
             return True
             
         except Exception as e:
             print(f"Failed to purchase product: {e}")
+            # Take screenshot to help debug the issue
+            self.driver.save_screenshot("purchase_error.png")
+            # Get current URL to help with debugging
+            print(f"Failed at URL: {self.driver.current_url}")
             return False
+        finally:
+            # Optional: Add any cleanup code here that should always run
+            pass
     
     def monitor_and_purchase(self):
         """Monitor the product and purchase when in stock"""
@@ -245,7 +353,8 @@ class TargetPokemonBot:
 if __name__ == "__main__":
     all_url = ["https://www.target.com/p/pokemon-scarlet-violet-s3-5-booster-bundle-box/-/A-88897904", "https://www.target.com/p/2024-pok-scarlet-violet-s8-5-elite-trainer-box/-/A-93954435",
                    "https://www.target.com/p/2025-pokemon-prismatic-evolutions-accessory-pouch-special-collection/-/A-94300053", "https://www.target.com/p/pok-233-mon-trading-card-game-scarlet-38-violet-prismatic-evolutions-booster-bundle/-/A-93954446",
-                   "https://www.target.com/p/pok-233-mon-trading-card-game-scarlet-38-violet-8212-journey-together-booster-bundle/-/A-94300074", "https://www.target.com/p/pokemon-trading-card-game-scarlet-38-violet-surging-sparks-booster-bundle/-/A-91619929"]
+                   "https://www.target.com/p/pok-233-mon-trading-card-game-quaquaval-ex-deluxe-battle-deck/-/A-89542109",
+                     "https://www.target.com/p/pok-233-mon-trading-card-game-scarlet-38-violet-8212-journey-together-booster-bundle/-/A-94300074", "https://www.target.com/p/pokemon-trading-card-game-scarlet-38-violet-surging-sparks-booster-bundle/-/A-91619929"]
     target_email = "gameflip1244@gmail.com"
     target_password = "Boostingplease123"
     
