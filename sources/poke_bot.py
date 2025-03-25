@@ -12,28 +12,33 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium_stealth import stealth
 import os
 from datetime import datetime
-# To Do: Fix tcin [done], confirm stock checking[done], and purchasing [figure out maximum quantity (3)]
+# To Do: Fix tcin [done], confirm stock checking[done], pop-up window, and purchasing [figure out maximum quantity (3)]
 
 global all_url
 class TargetPokemonBot:
-    def __init__(self, target_email, target_password, check_interval=30):
+    def __init__(self, target_email, target_password, urls, test, check_interval=15):
         self.target_email = target_email
         self.target_password = target_password
         self.check_interval = check_interval
+        self.url_list = urls
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5"
         }
-        self.tcin = self.extract_tcin_from_url()
-        #self.setup_browser()
+        if test:
+            pass
+        else:
+            self.url_list = all_url
+            self.tcin = self.extract_tcin_from_url()
+            self.setup_browser()
+    def set_url(self, urls):
+        self.url_list = urls
         
     def extract_tcin_from_url(self):
-        # Extract the TCIN (Target's product ID) from the URL
-        # Example URL: https://www.target.com/p/pokemon-trading-card-game/-/A-12345678
         try:
             tcins = ""
-            for url in all_url:
+            for url in self.url_list:
                 tcin = url.split("A-")[1].split("#")[0]
                 tcins += tcin
                 tcins += ','
@@ -93,16 +98,13 @@ class TargetPokemonBot:
                     is_available = True
                     # set product url for purchasing
                     self.product_url = all_url[x]
-                    threading.Thread(target=self.show_in_stock_notification, args=(all_url[x])).start()
+                    threading.Thread(target=self.show_in_stock_notification).start()
                     return is_available, 1
                 
                 # Determine if product is sold out
                 if fulfillment.get("sold_out", True):
                     is_available = False
                     return is_available, 1
-                    
-                # Get max quantity if available
-                #max_quantity = 1
             '''
             if is_available and "shipping_options" in fulfillment:
                 for option in fulfillment["shipping_options"]:
@@ -117,7 +119,7 @@ class TargetPokemonBot:
             print(f"Response: {data}")
             return False, 0
     
-    def show_in_stock_notification(self, product_url):
+    def show_in_stock_notification(self):
         """Show a popup notification when product is in stock"""
         # Create a root window but keep it hidden
         root = tk.Tk()
@@ -133,7 +135,7 @@ class TargetPokemonBot:
         # Create a custom dialog with buttons
         messagebox.showinfo(
             "Product In Stock Alert!",
-            f"Product is now in stock at:\n\n{product_url}"
+            f"Product is now in stock at:\n\n{self.product_url}"
         )
         
         # Destroy the hidden root window
@@ -190,6 +192,7 @@ class TargetPokemonBot:
             print(f"Failed to login: {e}")
             return False
     
+    '''
     def purchase_product(self, quantity):
         """Purchase the product"""
         try:
@@ -313,7 +316,7 @@ class TargetPokemonBot:
         finally:
             # Optional: Add any cleanup code here that should always run
             pass
-    
+    '''
     def monitor_and_purchase(self):
         """Monitor the product and purchase when in stock"""
         print(f"Starting to monitor {all_url}")
@@ -327,6 +330,7 @@ class TargetPokemonBot:
                 
                 if is_available and max_quantity > 0:
                     print(f"Product is in stock! Available quantity: {max_quantity}")
+                    return
                     purchase_success = self.purchase_product(max_quantity)
                     
                     if purchase_success:
@@ -337,7 +341,6 @@ class TargetPokemonBot:
                 else:
                     print("Product is not in stock. Waiting for restock...")
                 
-                # Wait before checking again
                 time.sleep(self.check_interval)
                 
             except Exception as e:
@@ -349,11 +352,10 @@ class TargetPokemonBot:
         if hasattr(self, 'driver'):
             self.driver.quit()
 
-# Example usage
 if __name__ == "__main__":
     all_url = ["https://www.target.com/p/pokemon-scarlet-violet-s3-5-booster-bundle-box/-/A-88897904", "https://www.target.com/p/2024-pok-scarlet-violet-s8-5-elite-trainer-box/-/A-93954435",
                    "https://www.target.com/p/2025-pokemon-prismatic-evolutions-accessory-pouch-special-collection/-/A-94300053", "https://www.target.com/p/pok-233-mon-trading-card-game-scarlet-38-violet-prismatic-evolutions-booster-bundle/-/A-93954446",
-                   "https://www.target.com/p/pok-233-mon-trading-card-game-quaquaval-ex-deluxe-battle-deck/-/A-89542109",
+                   #"https://www.target.com/p/pok-233-mon-trading-card-game-quaquaval-ex-deluxe-battle-deck/-/A-89542109",
                      "https://www.target.com/p/pok-233-mon-trading-card-game-scarlet-38-violet-8212-journey-together-booster-bundle/-/A-94300074", "https://www.target.com/p/pokemon-trading-card-game-scarlet-38-violet-surging-sparks-booster-bundle/-/A-91619929"]
     target_email = "gameflip1244@gmail.com"
     target_password = "Boostingplease123"
