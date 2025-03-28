@@ -12,7 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium_stealth import stealth
 import os
 from datetime import datetime
-# To Do: Fix tcin [done], confirm stock checking[done], pop-up window, and purchasing [figure out maximum quantity (3)]
+# To Do: Fix tcin [done], confirm stock checking[done], pop-up window[done], and purchasing [figure out maximum quantity (3)]
 
 global all_url
 class TargetPokemonBot:
@@ -21,6 +21,7 @@ class TargetPokemonBot:
         self.target_password = target_password
         self.check_interval = check_interval
         self.url_list = urls
+        self.test = test
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
@@ -43,6 +44,8 @@ class TargetPokemonBot:
                 tcins += tcin
                 tcins += ','
             tcins = tcins[:-1]
+            if self.test:
+                self.tcin = tcins
             return tcins
         except:
             print("Could not extract TCIN from URL. Please check the URL format.")
@@ -85,7 +88,10 @@ class TargetPokemonBot:
                 
             # Get the first product summary
             for x in range(len(data["data"]["product_summaries"])):
-                print(f"Currently checking {all_url[x]} for stock")
+                if self.test:
+                    print(f"Currently checking {self.url_list[x]} for stock")
+                else:
+                    print(f"Currently checking {all_url[x]} for stock")
                 # Check if the product is available for shipping
                 product_summary = data["data"]["product_summaries"][x]
                 fulfillment = product_summary.get("fulfillment", {})
@@ -94,7 +100,12 @@ class TargetPokemonBot:
                 # Check availability status
                 is_available = False
                 if shipping_options.get("availability_status") == "IN_STOCK":
-                    print(f"{all_url[x]} is in stock!")
+                    if self.test:
+                        print(f"{self.url_list[x]} is in stock!")
+                        is_available = True
+                        return is_available, 1
+                    else:
+                        print(f"{all_url[x]} is in stock!")
                     is_available = True
                     # set product url for purchasing
                     self.product_url = all_url[x]
@@ -104,7 +115,7 @@ class TargetPokemonBot:
                 # Determine if product is sold out
                 if fulfillment.get("sold_out", True):
                     is_available = False
-                    return is_available, 1
+                    return is_available, 0
             '''
             if is_available and "shipping_options" in fulfillment:
                 for option in fulfillment["shipping_options"]:
@@ -112,7 +123,7 @@ class TargetPokemonBot:
                         max_quantity = min(option["available_to_promise_quantity"], 
                                           fulfillment.get("limits", {}).get("max_allowed_quantity", 1))
             '''
-            return is_available, 1
+            return False, 0
         
         except Exception as e:
             print(f"Error checking stock: {e}")

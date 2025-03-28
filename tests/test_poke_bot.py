@@ -14,4 +14,16 @@ class TestPokeBot(unittest.TestCase):
         test1 = self.PokeObj.extract_tcin_from_url()
         self.assertEqual(test1, "88897904,93954435,94300053,93954446,89542109,94300074,91619929", f"TCINs don't match {test1}")
     # Test in stock
+    def test_instock_tcin(self):
+        self.PokeObj.set_url(["https://www.target.com/p/pok-233-mon-trading-card-game-quaquaval-ex-deluxe-battle-deck/-/A-89542109"])
+        self.PokeObj.extract_tcin_from_url()
+        test2 = self.PokeObj.check_stock()
+        check = (True, 1)
+        self.assertEqual(test2, check, f"In stock test didn't pass {test2}")
     # Test out of stock
+    def test_oos_tcin(self):
+        self.PokeObj.set_url(["https://www.target.com/p/2025-pokemon-prismatic-evolutions-accessory-pouch-special-collection/-/A-94300053"])
+        self.PokeObj.extract_tcin_from_url()
+        test3 = self.PokeObj.check_stock()
+        check = (False, 0)
+        self.assertEqual(test3, check, f"In stock test didn't pass {test3}")
